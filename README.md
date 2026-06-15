@@ -187,3 +187,8 @@ MIT
 ## 作者
 
 FloatSakura
+
+## PS
+
+第一次用AI写的插件也是第一次在GitHub上传内容，可能不太会用，多多包涵。
+Email：FloatSakura@Outlook.com
