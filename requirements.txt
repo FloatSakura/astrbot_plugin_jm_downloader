@@ -1,0 +1,5 @@
+jmcomic>=2.0.0
+httpx>=0.24.0
+reportlab>=4.0.0
+Pillow>=10.0.0
+pyminizip>=0.2.6
