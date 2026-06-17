@@ -124,6 +124,11 @@ astrbot_plugin_jm_downloader/
 
 ## 版本历史
 
+> **测试环境说明**：本项目仅在 Ubuntu 环境下测试，Windows 兼容性修复未经实际验证。
+
+### v1.2.2
+- 修复 Windows 环境下中文标题漫画 ZIP 生成失败（pyminizip 中文路径 OSError -102），改为纯 ASCII 临时路径先生成再移动
+
 ### v1.2.1
 - 新增私聊下载总开关（allow_private_chat），关闭后仅允许群聊使用
 - admin_qq 默认值改为空，留空时提示"请联系本群管理员"而非硬编码 QQ 号

@@ -32,7 +32,7 @@ _COMMAND_MODES: dict[str, str] = {
     "astrbot_plugin_jm_downloader",
     "FloatSakura",
     "禁漫天堂本子下载，.jm 指令自动下载并以压缩包/PDF发送",
-    "1.2.1",
+    "1.2.2",
 )
 class JmDownloader(JmDownloadMixin, Star):
     def __init__(self, context: Context, config: AstrBotConfig | dict | None = None):

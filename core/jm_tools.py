@@ -5,6 +5,8 @@ import os
 import asyncio
 import io
 import zipfile
+import tempfile
+import shutil
 from pathlib import Path
 
 from astrbot.api import logger
@@ -149,10 +151,14 @@ def images_to_zip(
         logger.warning("images_to_zip: 所有图片文件均不存在")
         return False
 
+    # 使用 ASCII 临时目录，避免 pyminizip 在 Windows 上无法处理中文路径
+    temp_dir = None
     try:
+        zip_parent = Path(zip_path).parent
+        zip_parent.mkdir(parents=True, exist_ok=True)
+        temp_dir = Path(tempfile.mkdtemp(prefix="jm_zip_", dir=str(zip_parent)))
+
         # 把所有图片转换为 jpg 字节流，放到临时目录
-        temp_dir = Path(zip_path).parent / "_zip_temp"
-        temp_dir.mkdir(parents=True, exist_ok=True)
         converted_paths: list[str] = []
 
         for i, img_path in enumerate(valid_paths):
@@ -181,21 +187,18 @@ def images_to_zip(
 
             converted_paths.append(str(jpg_file))
 
-        # 使用 pyminizip 打包（支持加密）
+        # 先生成到纯 ASCII 临时路径，再移动到目标位置
+        temp_zip = temp_dir / "output.zip"
         pyminizip.compress_multiple(
             converted_paths,
             [],
-            zip_path,
+            str(temp_zip),
             password,
             5,  # compression level
         )
 
-        # 清理临时文件
-        try:
-            import shutil
-            shutil.rmtree(str(temp_dir))
-        except Exception:
-            pass
+        # 移动到最终目标（同文件系统内为原子重命名）
+        shutil.move(str(temp_zip), zip_path)
 
         logger.info(
             f"✅ ZIP 生成成功: {zip_path} ({len(converted_paths)} 文件, "
@@ -209,6 +212,13 @@ def images_to_zip(
         import traceback
         logger.error(traceback.format_exc())
         return False
+    finally:
+        # 确保清理临时目录
+        if temp_dir is not None and temp_dir.exists():
+            try:
+                shutil.rmtree(str(temp_dir))
+            except Exception:
+                pass
 
 
 async def images_to_zip_async(
