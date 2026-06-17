@@ -1,5 +1,12 @@
 # astrbot_plugin_jm_downloader
 
+> **测试环境说明**
+>
+> 本插件仅在以下环境测试通过，未验证其他环境下的兼容性，如遇问题可能需要自行修改适配：
+> - **系统**：Ubuntu 24.04.4 LTS x86_64
+> - **部署方式**：AstrBot 与 NapCat 分别部署在独立 Docker 容器中，通过网络连接通信
+> - **系统**：Windows 11 专业版 25H2 x86_64，AstrBot 与 NapCat 本地部署（AstrBot v4.26.0-beta.4）
+
 > ⚠️ **重要警告**
 >
 > - 本插件会**不可避免地使 Bot 发送 R18 内容**，请严格遵守相关法律法规及平台使用条款
@@ -41,31 +48,32 @@ python >= 3.10
 ```
 
 安装 Python 依赖：
+1. 在 AstrBot WebUI → 左侧 **平台日志** → 右上角 **安装pip库**
+2. 逐行输入以下内容并执行：
 
-```bash
-pip install -r requirements.txt
+```
+jmcomic>=2.0.0
+httpx>=0.24.0
+reportlab>=4.0.0
+Pillow>=10.0.0
 ```
 
-`pyminizip` 需要系统安装 `zlib` 开发库：
-
-```bash
-# Ubuntu/Debian
-sudo apt install zlib1g-dev
-
-# CentOS/RHEL
-sudo yum install zlib-devel
-```
+> pyminizip 可选，ZIP 加密需要，安装失败不影响基本功能。
 
 ### 安装插件
 
-1. 在 AstrBot WebUI → 插件管理 → 上传插件 zip 包
-2. 或手动克隆到 `AstrBot/data/plugins/astrbot_plugin_jm_downloader/`
-3. 重启 AstrBot 或重新加载插件
+1. 在 AstrBot WebUI → 插件管理 → 安装插件：
+   - **上传 zip 包**：选择打包好的 zip 文件上传
+   - **从链接安装**：输入仓库地址 `https://github.com/FloatSakura/astrbot_plugin_jm_downloader`
+2. 重启 AstrBot 或重新加载插件
+
+> **打包注意事项**：压缩包内文件应位于**根目录**，不要包含外层文件夹（即 `main.py`、`metadata.yaml` 等在 zip 根目录下，而非 `astrbot_plugin_jm_downloader/main.py`）。
 
 ### 打包
 
 ```bash
-bash pack.sh
+cd astrbot_plugin_jm_downloader
+zip -r ../astrbot_plugin_jm_downloader.zip . -x ".git/*" "__pycache__/*" "*.pyc"
 ```
 
 ## 配置项
@@ -77,7 +85,7 @@ bash pack.sh
 | `output_mode` | 下拉 | 压缩包 | 发送模式：压缩包 / PDF / 两者 |
 | `proxy` | 字符串 | (空) | HTTP 代理地址 |
 | `jm_cookies` | 字符串 | (空) | JM 网站 Cookie |
-| `zip_password` | 字符串 | FloatSakura | ZIP 加密密码，留空则不加密 |
+| `zip_password` | 字符串 | (空) | ZIP 加密密码，留空则不加密 |
 | `max_total_images` | 整数 | 20 | 合并转发预览图片数量 |
 | `cache_retention_days` | 整数 | 3 | 缓存保留天数 |
 | `cache_max_size_gb` | 浮点数 | 3.0 | 缓存总大小上限 (GB) |
@@ -124,7 +132,13 @@ astrbot_plugin_jm_downloader/
 
 ## 版本历史
 
-> **测试环境说明**：本项目仅在 Ubuntu 环境下测试，Windows 兼容性修复未经实际验证。
+> **测试环境说明**：本项目仅在 Ubuntu 24.04.4 LTS 与 Windows 11 专业版 25H2 环境下测试，未能验证其他环境兼容性。
+
+### v1.2.3
+- pyminizip 改为可选依赖，未安装时自动回退为无密码 ZIP（stdlib zipfile）
+- ZIP 加密密码默认值清空（留空则不加密）
+- README 新增测试环境说明、打包注意事项，更新安装步骤（WebUI pip库安装）
+- 依赖清单去掉系统级 zlib 安装说明
 
 ### v1.2.2
 - 修复 Windows 环境下中文标题漫画 ZIP 生成失败（pyminizip 中文路径 OSError -102），改为纯 ASCII 临时路径先生成再移动

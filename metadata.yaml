@@ -1,6 +1,6 @@
 name: astrbot_plugin_jm_downloader
 desc: 禁漫天堂本子下载，.jm <ID> [1-30]，≤30章全量，ZIP加密(jpg) + PDF压缩，支持清理缓存
-help: 发送 .jm 本子ID [起始章-结束章] 下载完整本子。例：.jm 350234（≤30章自动全量）。大于30章需分段：.jm 350234 1-30。ZIP自动转jpg并加密（默认密码FloatSakura），PDF体积优化。.jm del-cache 清理缓存。
-version: v1.2.2
+help: 发送 .jm 本子ID [起始章-结束章] 下载完整本子。例：.jm 350234（≤30章自动全量）。大于30章需分段：.jm 350234 1-30。ZIP自动转jpg（留空不加密），PDF体积优化。.jm del-cache 清理缓存。
+version: v1.2.3
 author: FloatSakura
 repo: https://github.com/FloatSakura/astrbot_plugin_jm_downloader

@@ -132,6 +132,8 @@ def images_to_zip(
 ) -> bool:
     """将图片列表打包为 ZIP 文件（webp 自动转 jpg 再打包，可选加密）。
 
+    ZIP 加密需要 pyminizip；如未安装则自动回退为无密码 ZIP（stdlib zipfile）。
+
     Args:
         image_paths: 图片 Path 列表（按顺序排列）
         zip_path: 输出的 ZIP 文件路径
@@ -140,8 +142,6 @@ def images_to_zip(
     Returns:
         bool: 是否成功
     """
-    import pyminizip
-
     if not image_paths:
         logger.warning("images_to_zip: 图片列表为空")
         return False
@@ -151,7 +151,6 @@ def images_to_zip(
         logger.warning("images_to_zip: 所有图片文件均不存在")
         return False
 
-    # 使用 ASCII 临时目录，避免 pyminizip 在 Windows 上无法处理中文路径
     temp_dir = None
     try:
         zip_parent = Path(zip_path).parent
@@ -169,12 +168,10 @@ def images_to_zip(
             if suffix == ".webp":
                 jpg_bytes = _webp_to_jpg_bytes(img_path)
                 if jpg_bytes is None:
-                    # 转换失败，直接复制原文件
                     jpg_file.write_bytes(img_path.read_bytes())
                 else:
                     jpg_file.write_bytes(jpg_bytes)
             else:
-                # 非 webp 则直接转换（统一为 jpg，quality=100）
                 try:
                     img = Image.open(str(img_path))
                     if img.mode in ("RGBA", "P", "LA"):
@@ -187,23 +184,47 @@ def images_to_zip(
 
             converted_paths.append(str(jpg_file))
 
-        # 先生成到纯 ASCII 临时路径，再移动到目标位置
-        temp_zip = temp_dir / "output.zip"
-        pyminizip.compress_multiple(
-            converted_paths,
-            [],
-            str(temp_zip),
-            password,
-            5,  # compression level
+        # 生成 ZIP
+        need_password = bool(password)
+        used_pyminizip = False
+
+        if need_password:
+            try:
+                import pyminizip
+                temp_zip = temp_dir / "output.zip"
+                pyminizip.compress_multiple(
+                    converted_paths,
+                    [],
+                    str(temp_zip),
+                    password,
+                    5,
+                )
+                shutil.move(str(temp_zip), zip_path)
+                used_pyminizip = True
+            except ImportError:
+                logger.warning(
+                    "pyminizip 未安装，ZIP 将不加密。"
+                    "如需加密请安装: pip install pyminizip>=0.2.6"
+                )
+                need_password = False
+            except Exception as exc:
+                logger.warning(f"pyminizip 加密失败: {exc}，回退为无密码 ZIP")
+                need_password = False
+
+        if not need_password and not used_pyminizip:
+            # 使用 zipfile 标准库（无密码，全平台兼容）
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for jpg_path in converted_paths:
+                    zf.write(jpg_path, Path(jpg_path).name)
+
+        encrypt_status = (
+            "加密" if used_pyminizip
+            else ("无加密" if not password else "无加密(pyminizip 未安装)")
         )
-
-        # 移动到最终目标（同文件系统内为原子重命名）
-        shutil.move(str(temp_zip), zip_path)
-
         logger.info(
             f"✅ ZIP 生成成功: {zip_path} ({len(converted_paths)} 文件, "
             f"{os.path.getsize(zip_path) / 1024 / 1024:.1f} MB, "
-            f"{'加密' if password else '无加密'})"
+            f"{encrypt_status})"
         )
         return True
 
@@ -213,7 +234,6 @@ def images_to_zip(
         logger.error(traceback.format_exc())
         return False
     finally:
-        # 确保清理临时目录
         if temp_dir is not None and temp_dir.exists():
             try:
                 shutil.rmtree(str(temp_dir))
