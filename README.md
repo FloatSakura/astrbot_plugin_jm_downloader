@@ -57,6 +57,7 @@ httpx>=0.24.0
 reportlab>=4.0.0
 Pillow>=10.0.0
 pyzipper>=0.3.0
+cryptography
 ```
 
 ### 安装插件
