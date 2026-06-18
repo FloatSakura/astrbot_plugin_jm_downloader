@@ -239,14 +239,19 @@ def _try_encrypt_zip(zip_path: str, converted_paths: list[str], password: str) -
     Returns:
         (是否成功, 加密方式名称)
     """
-    # 1. 尝试 pyzipper
+    # 1. 尝试 pyzipper（使用 AES 加密）
     try:
         import pyzipper
-        with pyzipper.ZipFile(zip_path, "w", compression=pyzipper.ZIP_DEFLATED) as zf:
-            zf.pwd = password.encode()
+        with pyzipper.AESZipFile(
+            zip_path, 
+            "w", 
+            compression=pyzipper.ZIP_DEFLATED,
+            encryption=pyzipper.WZ_AES
+        ) as zf:
+            zf.setpassword(password.encode())
             for jpg_path in converted_paths:
                 zf.write(jpg_path, Path(jpg_path).name)
-        return True, "加密(pyzipper)"
+        return True, "加密(pyzipper/AES)"
     except ImportError:
         pass
     except Exception as exc:

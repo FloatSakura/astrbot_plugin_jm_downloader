@@ -136,6 +136,7 @@ astrbot_plugin_jm_downloader/
 
 ### v1.2.4
 - ZIP 加密从 pyminizip 替换为 pyzipper（纯 Python，全平台兼容，安装零门槛）
+- 修复 pyzipper 加密实现，使用 AESZipFile + setpassword 正确实现 AES 加密
 - ZIP 加密恢复默认开启（密码 FloatSakura），pyzipper 未安装时自动回退无密码 ZIP
 
 ### v1.2.3
