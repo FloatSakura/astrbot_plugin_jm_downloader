@@ -2,4 +2,4 @@ jmcomic>=2.0.0
 httpx>=0.24.0
 reportlab>=4.0.0
 Pillow>=10.0.0
-# pyminizip>=0.2.6  # 可选：ZIP 加密需要，安装失败不影响基本功能
+pyzipper>=0.3.0

@@ -132,7 +132,7 @@ def images_to_zip(
 ) -> bool:
     """将图片列表打包为 ZIP 文件（webp 自动转 jpg 再打包，可选加密）。
 
-    ZIP 加密需要 pyminizip；如未安装则自动回退为无密码 ZIP（stdlib zipfile）。
+    ZIP 加密使用 pyzipper（纯 Python，全平台兼容）；如未安装则自动回退为无密码 ZIP（stdlib zipfile）。
 
     Args:
         image_paths: 图片 Path 列表（按顺序排列）
@@ -186,40 +186,38 @@ def images_to_zip(
 
         # 生成 ZIP
         need_password = bool(password)
-        used_pyminizip = False
+        encrypted = False
 
         if need_password:
             try:
-                import pyminizip
-                temp_zip = temp_dir / "output.zip"
-                pyminizip.compress_multiple(
-                    converted_paths,
-                    [],
-                    str(temp_zip),
-                    password,
-                    5,
-                )
-                shutil.move(str(temp_zip), zip_path)
-                used_pyminizip = True
+                import pyzipper
+                with pyzipper.ZipFile(
+                    zip_path, "w",
+                    compression=pyzipper.ZIP_DEFLATED,
+                ) as zf:
+                    zf.setpassword(password.encode())
+                    for jpg_path in converted_paths:
+                        zf.write(jpg_path, Path(jpg_path).name)
+                encrypted = True
             except ImportError:
                 logger.warning(
-                    "pyminizip 未安装，ZIP 将不加密。"
-                    "如需加密请安装: pip install pyminizip>=0.2.6"
+                    "pyzipper 未安装，ZIP 将不加密。"
+                    "请安装: pip install pyzipper>=0.3.0"
                 )
                 need_password = False
             except Exception as exc:
-                logger.warning(f"pyminizip 加密失败: {exc}，回退为无密码 ZIP")
+                logger.warning(f"pyzipper 加密失败: {exc}，回退为无密码 ZIP")
                 need_password = False
 
-        if not need_password and not used_pyminizip:
+        if not encrypted:
             # 使用 zipfile 标准库（无密码，全平台兼容）
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for jpg_path in converted_paths:
                     zf.write(jpg_path, Path(jpg_path).name)
 
         encrypt_status = (
-            "加密" if used_pyminizip
-            else ("无加密" if not password else "无加密(pyminizip 未安装)")
+            "加密" if encrypted
+            else ("无加密" if not password else "无加密(pyzipper 未安装)")
         )
         logger.info(
             f"✅ ZIP 生成成功: {zip_path} ({len(converted_paths)} 文件, "

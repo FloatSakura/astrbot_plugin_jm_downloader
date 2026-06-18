@@ -56,9 +56,8 @@ jmcomic>=2.0.0
 httpx>=0.24.0
 reportlab>=4.0.0
 Pillow>=10.0.0
+pyzipper>=0.3.0
 ```
-
-> pyminizip 可选，ZIP 加密需要，安装失败不影响基本功能。
 
 ### 安装插件
 
@@ -85,7 +84,7 @@ zip -r ../astrbot_plugin_jm_downloader.zip . -x ".git/*" "__pycache__/*" "*.pyc"
 | `output_mode` | 下拉 | 压缩包 | 发送模式：压缩包 / PDF / 两者 |
 | `proxy` | 字符串 | (空) | HTTP 代理地址 |
 | `jm_cookies` | 字符串 | (空) | JM 网站 Cookie |
-| `zip_password` | 字符串 | (空) | ZIP 加密密码，留空则不加密 |
+| `zip_password` | 字符串 | FloatSakura | ZIP 加密密码，留空则不加密 |
 | `max_total_images` | 整数 | 20 | 合并转发预览图片数量 |
 | `cache_retention_days` | 整数 | 3 | 缓存保留天数 |
 | `cache_max_size_gb` | 浮点数 | 3.0 | 缓存总大小上限 (GB) |
@@ -127,7 +126,7 @@ astrbot_plugin_jm_downloader/
 - [jmcomic](https://github.com/hect0x7/JMComic-Crawler-Python) — JM 下载核心
 - [Pillow](https://python-pillow.org/) — 图片格式转换与压缩
 - [reportlab](https://www.reportlab.com/) — PDF 生成
-- [pyminizip](https://github.com/smihica/pyminizip) — ZIP 加密
+- [pyzipper](https://github.com/danifus/pyzipper) — ZIP 加密
 - [httpx](https://www.python-httpx.org/) — HTTP 客户端
 
 ## 版本历史
@@ -135,10 +134,10 @@ astrbot_plugin_jm_downloader/
 > **测试环境说明**：本项目仅在 Ubuntu 24.04.4 LTS 与 Windows 11 专业版 25H2 环境下测试，未能验证其他环境兼容性。
 
 ### v1.2.3
-- pyminizip 改为可选依赖，未安装时自动回退为无密码 ZIP（stdlib zipfile）
-- ZIP 加密密码默认值清空（留空则不加密）
+- ZIP 加密从 pyminizip 替换为 pyzipper（纯 Python，全平台兼容，安装零门槛）
+- ZIP 加密恢复默认开启（密码 FloatSakura），pyzipper 未安装时自动回退无密码 ZIP
 - README 新增测试环境说明、打包注意事项，更新安装步骤（WebUI pip库安装）
-- 依赖清单去掉系统级 zlib 安装说明
+- 依赖清单精简，去掉系统级 zlib 安装说明
 
 ### v1.2.2
 - 修复 Windows 环境下中文标题漫画 ZIP 生成失败（pyminizip 中文路径 OSError -102），改为纯 ASCII 临时路径先生成再移动

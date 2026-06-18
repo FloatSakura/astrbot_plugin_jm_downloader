@@ -73,7 +73,7 @@ class JmDownloadMixin:
             self._get_config_value("jm_settings.merge_send_as_sender", False)
         )
         self.jm_zip_password = str(
-            self._get_config_value("jm_settings.zip_password", "")
+            self._get_config_value("jm_settings.zip_password", "FloatSakura")
         ).strip()
         self.jm_max_chapters = max(
             1, int(self._get_config_value("jm_settings.max_chapters_per_segment", 30))

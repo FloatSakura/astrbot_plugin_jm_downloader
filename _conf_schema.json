@@ -30,8 +30,8 @@
             "zip_password": {
                 "description": "ZIP加密密码",
                 "type": "string",
-                "hint": "ZIP文件加密密码，留空则不加密。密码随等待发送消息一起显示。",
-                "default": ""
+                "hint": "ZIP文件加密密码，留空则不加密。默认 FloatSakura。密码随等待发送消息一起显示。",
+                "default": "FloatSakura"
             },
             "preview_images_group": {
                 "description": "群聊预览图片数",
