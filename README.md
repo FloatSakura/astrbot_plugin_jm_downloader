@@ -133,11 +133,15 @@ astrbot_plugin_jm_downloader/
 
 > **测试环境说明**：本项目仅在 Ubuntu 24.04.4 LTS 与 Windows 11 专业版 25H2 环境下测试，未能验证其他环境兼容性。
 
-### v1.2.3
+### v1.2.4
 - ZIP 加密从 pyminizip 替换为 pyzipper（纯 Python，全平台兼容，安装零门槛）
 - ZIP 加密恢复默认开启（密码 FloatSakura），pyzipper 未安装时自动回退无密码 ZIP
+
+### v1.2.3
+- pyminizip 改为可选依赖，未安装时自动回退为无密码 ZIP（stdlib zipfile），全平台兼容
+- ZIP 加密密码默认值清空（留空则不加密）
 - README 新增测试环境说明、打包注意事项，更新安装步骤（WebUI pip库安装）
-- 依赖清单精简，去掉系统级 zlib 安装说明
+- 依赖清单去掉系统级 zlib 安装说明
 
 ### v1.2.2
 - 修复 Windows 环境下中文标题漫画 ZIP 生成失败（pyminizip 中文路径 OSError -102），改为纯 ASCII 临时路径先生成再移动
