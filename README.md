@@ -47,9 +47,20 @@ AstrBot 禁漫天堂（JMComic）本子下载插件，支持 QQ 群内通过 `.j
 python >= 3.10
 ```
 
-安装 Python 依赖：
-1. 在 AstrBot WebUI → 左侧 **平台日志** → 右上角 **安装pip库**
-2. 逐行输入以下内容并执行：
+### 安装插件
+
+1. 在 AstrBot WebUI → 插件管理 → 安装插件：
+   - **上传 zip 包**：选择打包好的 zip 文件上传
+   - **从链接安装**：输入仓库地址 `https://github.com/FloatSakura/astrbot_plugin_jm_downloader`
+2. 重启 AstrBot 或重新加载插件
+
+> **打包注意事项**：压缩包内文件应位于**根目录**，不要包含外层文件夹（即 `main.py`、`metadata.yaml` 等在 zip 根目录下，而非 `astrbot_plugin_jm_downloader/main.py`）。
+
+### 手动安装依赖（可选）
+
+> ⚠️ **仅在 zip 包上传或从链接安装失败时需要手动安装依赖**
+
+在 AstrBot WebUI → 左侧 **平台日志** → 右上角 **安装pip库**，逐行输入以下内容并执行：
 
 ```
 jmcomic>=2.0.0
@@ -59,15 +70,6 @@ Pillow>=10.0.0
 pyzipper>=0.3.0
 cryptography
 ```
-
-### 安装插件
-
-1. 在 AstrBot WebUI → 插件管理 → 安装插件：
-   - **上传 zip 包**：选择打包好的 zip 文件上传
-   - **从链接安装**：输入仓库地址 `https://github.com/FloatSakura/astrbot_plugin_jm_downloader`
-2. 重启 AstrBot 或重新加载插件
-
-> **打包注意事项**：压缩包内文件应位于**根目录**，不要包含外层文件夹（即 `main.py`、`metadata.yaml` 等在 zip 根目录下，而非 `astrbot_plugin_jm_downloader/main.py`）。
 
 ### 打包
 
