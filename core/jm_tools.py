@@ -184,41 +184,25 @@ def images_to_zip(
 
             converted_paths.append(str(jpg_file))
 
-        # 生成 ZIP
+        # 生成 ZIP（三层回退：pyzipper → pyminizip → zipfile 无密码）
         need_password = bool(password)
         encrypted = False
+        encrypt_method = ""
 
         if need_password:
-            try:
-                import pyzipper
-                with pyzipper.ZipFile(
-                    zip_path, "w",
-                    compression=pyzipper.ZIP_DEFLATED,
-                    encryption=pyzipper.WZ_ZIP_CRYPTO,
-                ) as zf:
-                    zf.pwd = password.encode()
-                    for jpg_path in converted_paths:
-                        zf.write(jpg_path, Path(jpg_path).name)
-                encrypted = True
-            except ImportError:
-                logger.warning(
-                    "pyzipper 未安装，ZIP 将不加密。"
-                    "请安装: pip install pyzipper>=0.3.0"
-                )
-                need_password = False
-            except Exception as exc:
-                logger.warning(f"pyzipper 加密失败: {exc}，回退为无密码 ZIP")
-                need_password = False
+            encrypted, encrypt_method = _try_encrypt_zip(
+                zip_path, converted_paths, password
+            )
+            if not encrypted:
+                logger.warning(f"所有加密方式均失败，回退为无密码 ZIP")
 
         if not encrypted:
-            # 使用 zipfile 标准库（无密码，全平台兼容）
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 for jpg_path in converted_paths:
                     zf.write(jpg_path, Path(jpg_path).name)
 
-        encrypt_status = (
-            "加密" if encrypted
-            else ("无加密" if not password else "无加密(pyzipper 未安装)")
+        encrypt_status = encrypt_method or (
+            "无加密" if not password else f"无加密(加密库不可用)"
         )
         logger.info(
             f"✅ ZIP 生成成功: {zip_path} ({len(converted_paths)} 文件, "
@@ -247,6 +231,40 @@ async def images_to_zip_async(
 ) -> bool:
     """异步包装 images_to_zip"""
     return await asyncio.to_thread(images_to_zip, image_paths, zip_path, password)
+
+
+def _try_encrypt_zip(zip_path: str, converted_paths: list[str], password: str) -> tuple[bool, str]:
+    """尝试加密 ZIP，依次尝试 pyzipper → pyminizip。
+    
+    Returns:
+        (是否成功, 加密方式名称)
+    """
+    # 1. 尝试 pyzipper
+    try:
+        import pyzipper
+        with pyzipper.ZipFile(zip_path, "w", compression=pyzipper.ZIP_DEFLATED) as zf:
+            zf.pwd = password.encode()
+            for jpg_path in converted_paths:
+                zf.write(jpg_path, Path(jpg_path).name)
+        return True, "加密(pyzipper)"
+    except ImportError:
+        pass
+    except Exception as exc:
+        logger.debug(f"pyzipper 加密失败: {exc}")
+
+    # 2. 尝试 pyminizip
+    try:
+        import pyminizip
+        temp_zip = Path(zip_path).parent / "_tmp_enc.zip"
+        pyminizip.compress_multiple(converted_paths, [], str(temp_zip), password, 5)
+        shutil.move(str(temp_zip), zip_path)
+        return True, "加密(pyminizip)"
+    except ImportError:
+        pass
+    except Exception as exc:
+        logger.debug(f"pyminizip 加密失败: {exc}")
+
+    return False, ""
 
 
 # endregion
