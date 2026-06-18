@@ -194,8 +194,9 @@ def images_to_zip(
                 with pyzipper.ZipFile(
                     zip_path, "w",
                     compression=pyzipper.ZIP_DEFLATED,
+                    encryption=pyzipper.WZ_ZIP_CRYPTO,
                 ) as zf:
-                    zf.pwd = password.encode()
+                    zf.setpassword(password.encode())
                     for jpg_path in converted_paths:
                         zf.write(jpg_path, Path(jpg_path).name)
                 encrypted = True
