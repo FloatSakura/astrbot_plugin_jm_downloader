@@ -19,11 +19,80 @@ from astrbot.api.event import AstrMessageEvent, MessageChain
 from astrbot.api.message_components import File, Image, Node, Nodes, Plain
 
 from .jm_cache import ensure_cache_limits
+from .jm_group_files import (
+    clean_bot_files,
+    compute_used_space,
+    format_size,
+    get_onebot_client,
+    list_joined_groups,
+    remaining_gb,
+    select_used,
+)
 from .jm_paths import get_jm_chapter_path, get_jm_cache_path, get_cached_output_path
 from .jm_rate_limiter import RateLimiter
 from .jm_tools import images_to_pdf_async, images_to_zip_async
 
 _rate_limiter = RateLimiter()
+
+# 旧版配置所在的顶层键：1.2.5 之前所有配置都平铺在这里，现已拆分为若干分组配置。
+# 该键仍需保留在 _conf_schema.json 中（标记 invisible），否则 AstrBot 加载配置时
+# 会把它当作未知键直接删除，导致用户既有设置丢失。
+LEGACY_SECTION = "jm_settings"
+
+# /del-files 可选人群（可多选）
+_AUDIENCE_OPTIONS = ("群主", "群管理员", "Bot管理员", "群员")
+_AUDIENCE_DEFAULT = ["群管理员"]
+
+
+def _normalize_audience(value):
+    """规范化 /del-files 人群配置。
+
+    非法值回退为默认「群管理员」；空列表表示谁都不能用（保守处理）。
+    """
+    if isinstance(value, str):
+        text = value.strip()
+        if text == "所有人":  # 旧版「所有人」语义
+            return ["群主", "群管理员", "Bot管理员", "群员"]
+        return [text] if text in _AUDIENCE_OPTIONS else list(_AUDIENCE_DEFAULT)
+    if isinstance(value, (list, tuple, set)):
+        return [str(v).strip() for v in value if str(v).strip() in _AUDIENCE_OPTIONS]
+    return list(_AUDIENCE_DEFAULT)
+
+
+# 旧版扁平键 -> 新分组键的迁移表：(旧键, 新分组, 新键, 旧默认值, 转换函数)
+LEGACY_KEY_MAP = (
+    ("output_mode", "basic_settings", "output_mode", "压缩包", None),
+    ("proxy", "network_settings", "proxy", "", None),
+    ("jm_cookies", "network_settings", "jm_cookies", "", None),
+    ("zip_password", "basic_settings", "zip_password", "FloatSakura", None),
+    ("preview_images_group", "basic_settings", "preview_images_group", 5, None),
+    ("preview_images_private", "basic_settings", "preview_images_private", 100, None),
+    ("max_chapters_per_segment", "basic_settings", "max_chapters_per_segment", 30, None),
+    ("cache_retention_days", "cache_settings", "cache_retention_days", 3, None),
+    ("cache_max_size_gb", "cache_settings", "cache_max_size_gb", 3.0, None),
+    ("rate_limit_seconds", "cache_settings", "rate_limit_seconds", 60, None),
+    ("merge_send_as_sender", "basic_settings", "merge_send_as_sender", False, None),
+    ("whitelist_enabled", "access_settings", "whitelist_enabled", True, None),
+    ("whitelist_groups", "access_settings", "whitelist_groups", "", None),
+    ("admin_qq", "access_settings", "admin_qq", "", None),
+    ("allow_private_chat", "access_settings", "allow_private_chat", True, None),
+    ("file_merge_forward_enabled", "basic_settings", "file_merge_forward_enabled", True, None),
+    ("error_notify_mode", "cache_settings", "error_notify_mode", "通知", None),
+    ("bot_qq", "group_space_settings", "bot_qq", "", None),
+    ("space_check_enabled", "group_space_settings", "space_check_enabled", True, None),
+    ("space_warn_remaining_gb", "group_space_settings", "space_warn_remaining_gb", 0.5, None),
+    ("group_file_quota_gb", "group_space_settings", "group_file_quota_gb", 10.0, None),
+    ("space_include_temp_files", "group_space_settings", "space_include_temp_files", False, None),
+    ("space_warn_notify", "group_space_settings", "space_warn_notify", True, None),
+    ("auto_clean_enabled", "group_clean_settings", "auto_clean_enabled", False, None),
+    ("auto_clean_days", "group_clean_settings", "auto_clean_days", 7, None),
+    ("auto_clean_on_send", "group_clean_settings", "auto_clean_on_send", True, None),
+    ("auto_clean_scheduled", "group_clean_settings", "auto_clean_scheduled", False, None),
+    ("auto_clean_interval_hours", "group_clean_settings", "auto_clean_interval_hours", 24, None),
+    ("del_files_enabled", "group_clean_settings", "del_files_enabled", True, None),
+    ("del_files_audience", "group_clean_settings", "del_files_audience", "群管理员", _normalize_audience),
+    ("jmspace_enabled", "group_space_settings", "jmspace_enabled", True, None),
+)
 
 
 class JmDownloadMixin:
@@ -42,48 +111,85 @@ class JmDownloadMixin:
                 return default
         return val
 
+    def _cfg(self, section: str, key: str, default):
+        """读取分组配置 <section>.<key>；取不到时回退到旧版扁平键。"""
+        value = self._get_config_value(f"{section}.{key}", None)
+        if value is None:
+            value = self._get_config_value(f"{LEGACY_SECTION}.{key}", None)
+        return default if value is None else value
+
+    def _migrate_legacy_config(self) -> None:
+        """把旧版扁平配置迁移到分组配置，只生效一次。
+
+        判定依据是「旧值是否等于旧默认值」：不等于说明用户改过，需要迁移；
+        迁移后把旧键复位为默认值，下次启动即跳过（无需额外的迁移标记）。
+        """
+        legacy = self.config.get(LEGACY_SECTION)
+        if not isinstance(legacy, dict):
+            return
+
+        migrated = 0
+        for old_key, section, new_key, old_default, convert in LEGACY_KEY_MAP:
+            old_value = legacy.get(old_key)
+            if old_value is None or old_value == old_default:
+                continue
+
+            container = self.config.get(section)
+            if not isinstance(container, dict):
+                container = {}
+                self.config[section] = container
+
+            container[new_key] = convert(old_value) if convert else old_value
+            legacy[old_key] = old_default  # 复位，保证只迁移一次
+            migrated += 1
+
+        if not migrated:
+            return
+
+        try:
+            save = getattr(self.config, "save_config", None)
+            if callable(save):
+                save()
+        except Exception as exc:
+            logger.warning(f"📖 旧版配置迁移写盘失败（本次运行仍按迁移结果生效）: {exc}")
+        logger.info(f"📖 已从旧版配置迁移 {migrated} 项到分组配置")
+
     def _refresh_jm_config(self) -> None:
         """刷新 JM 相关配置"""
-        self.jm_proxy = str(self._get_config_value("jm_settings.proxy", "")).strip()
+        # ---------- 网络与代理 ----------
+        self.jm_proxy = str(self._cfg("network_settings", "proxy", "")).strip()
         self.jm_cookies = str(
-            self._get_config_value("jm_settings.jm_cookies", "")
+            self._cfg("network_settings", "jm_cookies", "")
+        ).strip()
+        # ---------- 下载与输出 ----------
+        self.jm_output_mode = str(
+            self._cfg("basic_settings", "output_mode", "压缩包")
+        ).strip()
+        self.jm_zip_password = str(
+            self._cfg("basic_settings", "zip_password", "FloatSakura")
         ).strip()
         self.jm_preview_images_group = max(
-            1, int(self._get_config_value("jm_settings.preview_images_group", 5))
+            1, int(self._cfg("basic_settings", "preview_images_group", 5))
         )
         self.jm_preview_images_private = max(
-            1, int(self._get_config_value("jm_settings.preview_images_private", 100))
+            1, int(self._cfg("basic_settings", "preview_images_private", 100))
         )
-        self.jm_cache_retention_days = max(
-            1, int(self._get_config_value("jm_settings.cache_retention_days", 3))
-        )
-        self.jm_cache_max_size_gb = max(
-            0.0, float(self._get_config_value("jm_settings.cache_max_size_gb", 3.0))
-        )
-        self.jm_rate_limit_seconds = max(
-            0, int(self._get_config_value("jm_settings.rate_limit_seconds", 60))
-        )
-        self.jm_error_notify = str(
-            self._get_config_value("jm_settings.error_notify_mode", "通知")
-        ).strip()
-        self.jm_output_mode = str(
-            self._get_config_value("jm_settings.output_mode", "压缩包")
-        ).strip()
-        self.jm_merge_send_as_sender = bool(
-            self._get_config_value("jm_settings.merge_send_as_sender", False)
-        )
-        self.jm_zip_password = str(
-            self._get_config_value("jm_settings.zip_password", "FloatSakura")
-        ).strip()
         self.jm_max_chapters = max(
-            1, int(self._get_config_value("jm_settings.max_chapters_per_segment", 30))
+            1, int(self._cfg("basic_settings", "max_chapters_per_segment", 30))
         )
+        self.jm_merge_send_as_sender = bool(
+            self._cfg("basic_settings", "merge_send_as_sender", False)
+        )
+        self.jm_file_merge_forward = bool(
+            self._cfg("basic_settings", "file_merge_forward_enabled", True)
+        )
+        # ---------- 访问控制 ----------
         self.jm_whitelist_enabled = bool(
-            self._get_config_value("jm_settings.whitelist_enabled", True)
+            self._cfg("access_settings", "whitelist_enabled", True)
         )
         self.jm_whitelist_set = set()
         whitelist_raw = str(
-            self._get_config_value("jm_settings.whitelist_groups", "")
+            self._cfg("access_settings", "whitelist_groups", "")
         ).strip()
         if whitelist_raw:
             for g in whitelist_raw.split(","):
@@ -91,13 +197,239 @@ class JmDownloadMixin:
                 if g:
                     self.jm_whitelist_set.add(g)
         self.jm_admin_qq = str(
-            self._get_config_value("jm_settings.admin_qq", "")
+            self._cfg("access_settings", "admin_qq", "")
         ).strip()
-        self.jm_file_merge_forward = bool(
-            self._get_config_value("jm_settings.file_merge_forward_enabled", True)
-        )
         self.jm_allow_private_chat = bool(
-            self._get_config_value("jm_settings.allow_private_chat", True)
+            self._cfg("access_settings", "allow_private_chat", True)
+        )
+        # ---------- 缓存与限速 ----------
+        self.jm_cache_retention_days = max(
+            1, int(self._cfg("cache_settings", "cache_retention_days", 3))
+        )
+        self.jm_cache_max_size_gb = max(
+            0.0, float(self._cfg("cache_settings", "cache_max_size_gb", 3.0))
+        )
+        self.jm_rate_limit_seconds = max(
+            0, int(self._cfg("cache_settings", "rate_limit_seconds", 60))
+        )
+        self.jm_error_notify = str(
+            self._cfg("cache_settings", "error_notify_mode", "通知")
+        ).strip()
+        # ---------- 群文件空间 ----------
+        self.jm_bot_qq = str(
+            self._cfg("group_space_settings", "bot_qq", "")
+        ).strip()
+        self.jm_space_check_enabled = bool(
+            self._cfg("group_space_settings", "space_check_enabled", True)
+        )
+        self.jm_space_warn_remaining_gb = max(
+            0.0,
+            float(self._cfg("group_space_settings", "space_warn_remaining_gb", 0.5)),
+        )
+        self.jm_group_file_quota_gb = max(
+            0.0,
+            float(self._cfg("group_space_settings", "group_file_quota_gb", 10.0)),
+        )
+        self.jm_space_include_temp_files = bool(
+            self._cfg("group_space_settings", "space_include_temp_files", False)
+        )
+        self.jm_space_warn_notify = bool(
+            self._cfg("group_space_settings", "space_warn_notify", True)
+        )
+        self.jm_jmspace_enabled = bool(
+            self._cfg("group_space_settings", "jmspace_enabled", True)
+        )
+        # ---------- 群文件清理 ----------
+        self.jm_auto_clean_enabled = bool(
+            self._cfg("group_clean_settings", "auto_clean_enabled", False)
+        )
+        self.jm_auto_clean_days = max(
+            0, int(self._cfg("group_clean_settings", "auto_clean_days", 30))
+        )
+        self.jm_auto_clean_on_send = bool(
+            self._cfg("group_clean_settings", "auto_clean_on_send", True)
+        )
+        self.jm_auto_clean_scheduled = bool(
+            self._cfg("group_clean_settings", "auto_clean_scheduled", False)
+        )
+        self.jm_auto_clean_interval_hours = max(
+            1, int(self._cfg("group_clean_settings", "auto_clean_interval_hours", 24))
+        )
+        self.jm_del_files_enabled = bool(
+            self._cfg("group_clean_settings", "del_files_enabled", True)
+        )
+        self.jm_del_files_audience = _normalize_audience(
+            self._cfg("group_clean_settings", "del_files_audience", _AUDIENCE_DEFAULT)
+        )
+
+    # ---------- 群文件管理前置 ----------
+    @property
+    def jm_group_file_ready(self) -> bool:
+        """群文件管理功能是否可用（必须已配置机器人QQ号）"""
+        return bool(self.jm_bot_qq)
+
+    async def _prepare_group_file_send(self, event: AstrMessageEvent):
+        """群聊发送文件前的群文件处理：自动清理 + 空间告警。
+
+        私聊（无群号）直接返回；未配置 bot_qq 或拿不到客户端时静默跳过，
+        不影响文件发送本身。
+        """
+        group_id = event.get_group_id()
+        if not group_id:
+            return
+
+        if not self.jm_group_file_ready:
+            logger.debug("📁 未配置 bot_qq，跳过群文件检查与清理")
+            return
+
+        client = await get_onebot_client(event, getattr(self, "context", None))
+        if client is None:
+            logger.debug("📁 未获取到 OneBot 客户端，跳过群文件检查与清理")
+            return
+
+        await self._maybe_auto_clean(client, group_id)
+        async for result in self._check_group_space(event, client, group_id):
+            yield result
+
+    async def _maybe_auto_clean(self, client, group_id: str) -> None:
+        """按配置在发送前清理 Bot 上传的过期群文件"""
+        if not self.jm_auto_clean_enabled or not self.jm_auto_clean_on_send:
+            return
+        if self.jm_auto_clean_days <= 0:
+            return
+
+        deleted, failed, freed = await clean_bot_files(
+            client, group_id, self.jm_auto_clean_days, self.jm_bot_qq
+        )
+        if deleted or failed:
+            logger.info(
+                f"🧹 群 {group_id} 发送前清理完成: 删除 {deleted} 个 | "
+                f"失败 {failed} 个 | 释放 {format_size(freed)}"
+            )
+
+    async def _check_group_space(self, event: AstrMessageEvent, client, group_id: str):
+        """检查群文件剩余空间，低于阈值时告警（不阻止发送）。
+
+        协议端（NapCat）不返回真实容量，其 used_space/total_space 为硬编码值，
+        因此剩余空间 = 配置的群容量 - 自行统计的已用空间（按文件大小累加）。
+        """
+        if not self.jm_space_check_enabled:
+            return
+        if self.jm_group_file_quota_gb <= 0:
+            logger.debug("📁 未配置群文件容量，跳过空间检查")
+            return
+
+        stats = await compute_used_space(client, group_id)
+        if stats is None:
+            return
+
+        used_bytes, _ = select_used(stats, self.jm_space_include_temp_files)
+        remain = remaining_gb(used_bytes, self.jm_group_file_quota_gb)
+        if remain is None or remain > self.jm_space_warn_remaining_gb:
+            return
+
+        used_text = format_size(used_bytes)
+        logger.info(
+            f"⚠️ 群 {group_id} 群文件剩余 {remain:.2f}GB"
+            f"（容量 {self.jm_group_file_quota_gb}GB / 已用 {used_text}，"
+            f"其中临时 {format_size(stats['temp_bytes'])}），"
+            f"低于告警阈值 {self.jm_space_warn_remaining_gb}GB"
+        )
+        if self.jm_space_warn_notify:
+            temp_note = "已计入" if self.jm_space_include_temp_files else "未计入"
+            yield event.plain_result(
+                f"⚠️ 群文件剩余空间提醒\n"
+                f"{'─' * 20}\n"
+                f"已用: {used_text}（统计值）\n"
+                f"临时文件: {format_size(stats['temp_bytes'])}（{temp_note}）\n"
+                f"容量: {self.jm_group_file_quota_gb}GB（配置值）\n"
+                f"剩余: {remain:.2f}GB\n"
+                f"告警阈值: {self.jm_space_warn_remaining_gb}GB\n"
+                f"仍会继续发送文件，可发送 /jmspace 查看详情或 /del-files 清理"
+            )
+
+    # ---------- 定时清理 ----------
+    def ensure_clean_task(self) -> None:
+        """按配置确保后台定时清理任务已启动（需在事件循环内调用）"""
+        self._refresh_jm_config()
+        if not (self.jm_auto_clean_enabled and self.jm_auto_clean_scheduled):
+            return
+        if not self.jm_group_file_ready or self.jm_auto_clean_days <= 0:
+            logger.info("🧹 定时清理未启动：未配置 bot_qq 或保留天数为 0")
+            return
+
+        task = getattr(self, "_clean_task", None)
+        if task is not None and not task.done():
+            return
+        try:
+            self._clean_task = asyncio.create_task(self._scheduled_clean_loop())
+        except RuntimeError as exc:
+            logger.debug(f"🧹 定时清理任务暂未启动（无事件循环）: {exc}")
+            return
+        logger.info(
+            f"🧹 群文件定时清理已启动，间隔 {self.jm_auto_clean_interval_hours} 小时"
+        )
+
+    async def stop_clean_task(self) -> None:
+        """停止后台定时清理任务（插件卸载/重载时调用）"""
+        task = getattr(self, "_clean_task", None)
+        if task is None or task.done():
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning(f"🧹 停止定时清理任务时出现异常: {exc}")
+        logger.info("🧹 群文件定时清理任务已停止")
+
+    async def _scheduled_clean_loop(self) -> None:
+        """后台定时清理循环"""
+        interval = self.jm_auto_clean_interval_hours * 3600
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                try:
+                    await self._run_scheduled_clean_once()
+                except Exception as exc:
+                    logger.error(f"🧹 定时清理本轮失败: {exc}")
+        except asyncio.CancelledError:
+            raise
+
+    async def _run_scheduled_clean_once(self) -> None:
+        """对所有已加入的群执行一次清理"""
+        self._refresh_jm_config()
+        if not (self.jm_auto_clean_enabled and self.jm_auto_clean_scheduled):
+            return
+        if not self.jm_group_file_ready or self.jm_auto_clean_days <= 0:
+            return
+
+        client = await get_onebot_client(None, getattr(self, "context", None))
+        if client is None:
+            logger.warning("🧹 定时清理跳过：未获取到 OneBot 客户端")
+            return
+
+        groups = await list_joined_groups(client)
+        if not groups:
+            logger.info("🧹 定时清理跳过：未获取到群列表")
+            return
+
+        total_deleted = total_failed = total_freed = 0
+        for group in groups:
+            group_id = group.get("group_id")
+            if not group_id:
+                continue
+            deleted, failed, freed = await clean_bot_files(
+                client, group_id, self.jm_auto_clean_days, self.jm_bot_qq
+            )
+            total_deleted += deleted
+            total_failed += failed
+            total_freed += freed
+
+        logger.info(
+            f"🧹 定时清理完成: 扫描 {len(groups)} 个群 | 删除 {total_deleted} 个 | "
+            f"失败 {total_failed} 个 | 释放 {format_size(total_freed)}"
         )
 
     # ---------- 合并转发发送人 ----------
@@ -438,6 +770,10 @@ class JmDownloadMixin:
             preview_paths = all_image_paths
             if len(preview_paths) > self._get_preview_limit(event):
                 preview_paths = preview_paths[: self._get_preview_limit(event)]
+
+            # 群文件清理 / 空间检查（仅群聊，失败不影响发送）
+            async for result in self._prepare_group_file_send(event):
+                yield result
 
             # 第一条消息
             yield event.plain_result(f"📥 开始下载「{title}」，请稍候...")
@@ -816,6 +1152,10 @@ class JmDownloadMixin:
                 else:
                     logger.error(f"ZIP 生成失败: album_id={album_id}")
                     yield event.plain_result("❌ ZIP 生成失败")
+
+        # 群文件清理 / 空间检查（仅群聊，失败不影响发送）
+        async for result in self._prepare_group_file_send(event):
+            yield result
 
         # 发送文件：私聊单独发送，群聊合并一条转发（含摘要）
         is_group = bool(event.get_group_id())

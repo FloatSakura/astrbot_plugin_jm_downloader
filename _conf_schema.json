@@ -1,12 +1,12 @@
 {
-    "jm_settings": {
-        "description": "JM下载设置",
+    "basic_settings": {
+        "description": "下载与输出",
         "type": "object",
         "items": {
             "output_mode": {
                 "description": "发送模式",
                 "type": "string",
-                "hint": "压缩包：将所有图片打包为加密ZIP（webp→jpg）发送。PDF：合并为PDF（体积优化）。两者：同时发送ZIP+PDF，并追加合并转发。",
+                "hint": "压缩包：将所有图片打包为加密ZIP（webp→jpg）发送。PDF：合并为PDF（体积优化）。两者：同时发送ZIP+PDF，并追加合并转发。不发送：仅发送预览图。",
                 "default": "压缩包",
                 "options": [
                     "不发送",
@@ -15,23 +15,19 @@
                     "两者"
                 ]
             },
-            "proxy": {
-                "description": "代理地址",
-                "type": "string",
-                "hint": "HTTP 代理地址，如 http://127.0.0.1:7890。留空则不使用代理。",
-                "default": ""
-            },
-            "jm_cookies": {
-                "description": "JM Cookies",
-                "type": "string",
-                "hint": "粘贴 Cookie 字符串（可选）。填写后可访问需要登录的内容。留空则使用游客模式。",
-                "default": ""
-            },
             "zip_password": {
                 "description": "ZIP加密密码",
                 "type": "string",
                 "hint": "ZIP文件加密密码，留空则不加密。默认 FloatSakura。密码随等待发送消息一起显示。",
                 "default": "FloatSakura"
+            },
+            "max_chapters_per_segment": {
+                "description": "每段最多下载章节数",
+                "type": "int",
+                "hint": "单次 .jm 指令最多允许下载的章节数。大于此值的本子需分段下载。过大会导致下载缓慢，建议保持30。",
+                "default": 30,
+                "min": 1,
+                "max": 999
             },
             "preview_images_group": {
                 "description": "群聊预览图片数",
@@ -49,14 +45,72 @@
                 "min": 1,
                 "max": 999
             },
-            "max_chapters_per_segment": {
-                "description": "每段最多下载章节数",
-                "type": "int",
-                "hint": "单次 .jm 指令最多允许下载的章节数。大于此值的本子需分段下载。过大会导致下载缓慢，建议保持30。",
-                "default": 30,
-                "min": 1,
-                "max": 999
+            "merge_send_as_sender": {
+                "description": "合并转发显示为发送者",
+                "type": "bool",
+                "hint": "开启后合并转发的发送人显示为发送指令的用户；关闭则显示为 Bot。",
+                "default": false
             },
+            "file_merge_forward_enabled": {
+                "description": "群聊文件合并转发",
+                "type": "bool",
+                "hint": "开启后，群聊中 PDF/ZIP 以合并转发发送。私聊始终以单独文件发送。",
+                "default": true
+            }
+        }
+    },
+    "network_settings": {
+        "description": "网络与代理",
+        "type": "object",
+        "items": {
+            "proxy": {
+                "description": "代理地址",
+                "type": "string",
+                "hint": "HTTP 代理地址，如 http://127.0.0.1:7890。留空则不使用代理。",
+                "default": ""
+            },
+            "jm_cookies": {
+                "description": "JM Cookies",
+                "type": "string",
+                "hint": "粘贴 Cookie 字符串（可选）。填写后可访问需要登录的内容。留空则使用游客模式。",
+                "default": ""
+            }
+        }
+    },
+    "access_settings": {
+        "description": "访问控制",
+        "type": "object",
+        "items": {
+            "whitelist_enabled": {
+                "description": "开启群白名单",
+                "type": "bool",
+                "hint": "开启后，仅白名单群号可使用 .jm 指令。私聊不受限制。默认开启。",
+                "default": true
+            },
+            "whitelist_groups": {
+                "description": "白名单群号",
+                "type": "string",
+                "hint": "允许使用 .jm 的群号，多个用英文逗号分隔，如 123456,789012。",
+                "default": ""
+            },
+            "allow_private_chat": {
+                "description": "允许私聊下载",
+                "type": "bool",
+                "hint": "开启后允许用户在私聊中使用 .jm 指令下载。关闭则仅允许群聊。默认开启。",
+                "default": true
+            },
+            "admin_qq": {
+                "description": "管理员QQ",
+                "type": "string",
+                "hint": "在白名单拒绝提示和帮助中显示的管理员联系方式，留空则显示「请联系本群管理员」。同时作为 /del-files 权限选项中的「Bot管理员」。",
+                "default": ""
+            }
+        }
+    },
+    "cache_settings": {
+        "description": "缓存与限速",
+        "type": "object",
+        "items": {
             "cache_retention_days": {
                 "description": "缓存保留天数",
                 "type": "int",
@@ -81,42 +135,6 @@
                 "min": 0,
                 "max": 600
             },
-            "merge_send_as_sender": {
-                "description": "合并转发显示为发送者",
-                "type": "bool",
-                "hint": "开启后合并转发的发送人显示为发送指令的用户；关闭则显示为 Bot。",
-                "default": false
-            },
-            "whitelist_enabled": {
-                "description": "开启群白名单",
-                "type": "bool",
-                "hint": "开启后，仅白名单群号可使用 .jm 指令。私聊不受限制。默认开启。",
-                "default": true
-            },
-            "whitelist_groups": {
-                "description": "白名单群号",
-                "type": "string",
-                "hint": "允许使用 .jm 的群号，多个用英文逗号分隔，如 123456,789012。",
-                "default": ""
-            },
-            "admin_qq": {
-                "description": "管理员QQ",
-                "type": "string",
-                "hint": "在白名单拒绝提示和帮助中显示的管理员联系方式，留空则显示「请联系本群管理员」。",
-                "default": ""
-            },
-            "allow_private_chat": {
-                "description": "允许私聊下载",
-                "type": "bool",
-                "hint": "开启后允许用户在私聊中使用 .jm 指令下载。关闭则仅允许群聊。默认开启。",
-                "default": true
-            },
-            "file_merge_forward_enabled": {
-                "description": "群聊文件合并转发",
-                "type": "bool",
-                "hint": "开启后，群聊中 PDF/ZIP 以合并转发发送。私聊始终以单独文件发送。",
-                "default": true
-            },
             "error_notify_mode": {
                 "description": "错误通知模式",
                 "type": "string",
@@ -126,6 +144,341 @@
                     "静默",
                     "通知"
                 ]
+            }
+        }
+    },
+    "group_space_settings": {
+        "description": "群文件空间",
+        "type": "object",
+        "items": {
+            "bot_qq": {
+                "description": "机器人QQ号",
+                "type": "string",
+                "hint": "填写 Bot 自身登录的 QQ 号。用于在群文件列表中识别「哪些文件是本插件上传的」。留空时：下载与发送不受影响，但清理群文件、/del-files、/jmspace 等群文件管理功能全部禁用。",
+                "default": ""
+            },
+            "space_check_enabled": {
+                "description": "发送前检查群文件空间",
+                "type": "bool",
+                "hint": "开启后在群聊发送文件前统计群文件占用。需要先填写「机器人QQ号」，未填写时该检查自动跳过。",
+                "default": true
+            },
+            "group_file_quota_gb": {
+                "description": "群文件容量(GB)",
+                "type": "float",
+                "hint": "本群群文件的总容量，用于计算剩余空间。注意：协议端(NapCat)不返回真实容量（其接口返回固定的 0/10GB），所以需要你手动填写本群实际容量；QQ 普通群通常为 10GB。设为 0 表示不计算剩余，仅显示已用空间。",
+                "default": 10.0,
+                "min": 0,
+                "max": 10240
+            },
+            "space_warn_remaining_gb": {
+                "description": "空间告警阈值(GB)",
+                "type": "float",
+                "hint": "群文件剩余空间低于此值时发出提醒（仅提醒，仍会继续发送文件）。设为 0 表示只要有剩余就不提醒。剩余空间 = 「群文件容量」- 已用空间。",
+                "default": 0.5,
+                "min": 0,
+                "max": 1024
+            },
+            "space_warn_notify": {
+                "description": "空间不足时群内提醒",
+                "type": "bool",
+                "hint": "开启后剩余空间低于阈值时在群内发送提醒消息；关闭则只记录日志。",
+                "default": true
+            },
+            "space_include_temp_files": {
+                "description": "空间统计计入临时文件",
+                "type": "bool",
+                "hint": "QQ 群文件中的「临时文件」（聊天中发送、会自行过期的那类）是否计入已用空间。默认不计入，剩余空间按永久文件计算；临时文件的数量与占用仍会在 /jmspace 中单独列出。判定依据是协议端返回的过期时间字段(dead_time)。",
+                "default": false
+            },
+            "jmspace_enabled": {
+                "description": "启用 /jmspace 指令",
+                "type": "bool",
+                "hint": "开启后所有人可在群聊使用 /jmspace 查看本群文件空间使用情况。需要先填写「机器人QQ号」。",
+                "default": true
+            }
+        }
+    },
+    "group_clean_settings": {
+        "description": "群文件清理",
+        "type": "object",
+        "items": {
+            "auto_clean_enabled": {
+                "description": "自动清理群文件总开关",
+                "type": "bool",
+                "hint": "开启后按「清理时机」自动删除 Bot 自己上传的过期群文件（不会删除群成员上传的文件）。需要先填写「机器人QQ号」。",
+                "default": false
+            },
+            "auto_clean_days": {
+                "description": "群文件保留天数",
+                "type": "int",
+                "hint": "删除 Bot 上传且超过 n 天的群文件。设为 0 表示永不删除（此时自动清理与 /del-files 都不会删除任何文件）。",
+                "default": 30,
+                "min": 0,
+                "max": 365
+            },
+            "auto_clean_on_send": {
+                "description": "清理时机：发送前",
+                "type": "bool",
+                "hint": "开启后在群聊发送文件前执行一次清理。需同时开启「自动清理群文件总开关」。",
+                "default": true
+            },
+            "auto_clean_scheduled": {
+                "description": "清理时机：插件加载后定时",
+                "type": "bool",
+                "hint": "开启后插件加载时启动后台任务，按下方间隔周期性清理 Bot 已加入的所有群。需同时开启「自动清理群文件总开关」。",
+                "default": false
+            },
+            "auto_clean_interval_hours": {
+                "description": "定时清理间隔(小时)",
+                "type": "int",
+                "hint": "后台定时清理的间隔小时数，仅在开启「清理时机：插件加载后定时」时生效。",
+                "default": 24,
+                "min": 1,
+                "max": 720
+            },
+            "del_files_enabled": {
+                "description": "启用 /del-files 指令",
+                "type": "bool",
+                "hint": "开启后可使用 /del-files 按下方人群配置清理本群中 Bot 上传的过期群文件。需要先填写「机器人QQ号」。",
+                "default": true
+            },
+            "del_files_audience": {
+                "description": "/del-files 可用人群（可多选）",
+                "type": "list",
+                "options": [
+                    "群主",
+                    "群管理员",
+                    "Bot管理员",
+                    "群员"
+                ],
+                "default": [
+                    "群管理员"
+                ],
+                "hint": "可多选，勾选多项时满足任意一项即可使用。群管理员包含群主；群员仅指普通群成员（不含群主与群管理员）；Bot管理员 指「访问控制」中填写的管理员QQ。群角色通过协议端查询，查询失败会拒绝执行。"
+            }
+        }
+    },
+    "jm_settings": {
+        "description": "旧版配置（自动迁移，请勿修改）",
+        "type": "object",
+        "items": {
+            "output_mode": {
+                "description": "旧版：发送模式",
+                "type": "string",
+                "hint": "已被「下载与输出 - 发送模式」取代，插件会自动迁移取值。",
+                "default": "压缩包",
+                "invisible": true
+            },
+            "proxy": {
+                "description": "旧版：代理地址",
+                "type": "string",
+                "hint": "已被「网络与代理 - 代理地址」取代，插件会自动迁移取值。",
+                "default": "",
+                "invisible": true
+            },
+            "jm_cookies": {
+                "description": "旧版：JM Cookies",
+                "type": "string",
+                "hint": "已被「网络与代理 - JM Cookies」取代，插件会自动迁移取值。",
+                "default": "",
+                "invisible": true
+            },
+            "zip_password": {
+                "description": "旧版：ZIP加密密码",
+                "type": "string",
+                "hint": "已被「下载与输出 - ZIP加密密码」取代，插件会自动迁移取值。",
+                "default": "FloatSakura",
+                "invisible": true
+            },
+            "preview_images_group": {
+                "description": "旧版：群聊预览图片数",
+                "type": "int",
+                "hint": "已被「下载与输出 - 群聊预览图片数」取代，插件会自动迁移取值。",
+                "default": 5,
+                "invisible": true
+            },
+            "preview_images_private": {
+                "description": "旧版：私聊预览图片数",
+                "type": "int",
+                "hint": "已被「下载与输出 - 私聊预览图片数」取代，插件会自动迁移取值。",
+                "default": 100,
+                "invisible": true
+            },
+            "max_chapters_per_segment": {
+                "description": "旧版：每段最多下载章节数",
+                "type": "int",
+                "hint": "已被「下载与输出 - 每段最多下载章节数」取代，插件会自动迁移取值。",
+                "default": 30,
+                "invisible": true
+            },
+            "cache_retention_days": {
+                "description": "旧版：缓存保留天数",
+                "type": "int",
+                "hint": "已被「缓存与限速 - 缓存保留天数」取代，插件会自动迁移取值。",
+                "default": 3,
+                "invisible": true
+            },
+            "cache_max_size_gb": {
+                "description": "旧版：缓存最大大小",
+                "type": "float",
+                "hint": "已被「缓存与限速 - 缓存最大大小」取代，插件会自动迁移取值。",
+                "default": 3.0,
+                "invisible": true
+            },
+            "rate_limit_seconds": {
+                "description": "旧版：群组限速间隔",
+                "type": "int",
+                "hint": "已被「缓存与限速 - 群组限速间隔」取代，插件会自动迁移取值。",
+                "default": 60,
+                "invisible": true
+            },
+            "merge_send_as_sender": {
+                "description": "旧版：合并转发显示为发送者",
+                "type": "bool",
+                "hint": "已被「下载与输出 - 合并转发显示为发送者」取代，插件会自动迁移取值。",
+                "default": false,
+                "invisible": true
+            },
+            "whitelist_enabled": {
+                "description": "旧版：开启群白名单",
+                "type": "bool",
+                "hint": "已被「访问控制 - 开启群白名单」取代，插件会自动迁移取值。",
+                "default": true,
+                "invisible": true
+            },
+            "whitelist_groups": {
+                "description": "旧版：白名单群号",
+                "type": "string",
+                "hint": "已被「访问控制 - 白名单群号」取代，插件会自动迁移取值。",
+                "default": "",
+                "invisible": true
+            },
+            "admin_qq": {
+                "description": "旧版：管理员QQ",
+                "type": "string",
+                "hint": "已被「访问控制 - 管理员QQ」取代，插件会自动迁移取值。",
+                "default": "",
+                "invisible": true
+            },
+            "allow_private_chat": {
+                "description": "旧版：允许私聊下载",
+                "type": "bool",
+                "hint": "已被「访问控制 - 允许私聊下载」取代，插件会自动迁移取值。",
+                "default": true,
+                "invisible": true
+            },
+            "file_merge_forward_enabled": {
+                "description": "旧版：群聊文件合并转发",
+                "type": "bool",
+                "hint": "已被「下载与输出 - 群聊文件合并转发」取代，插件会自动迁移取值。",
+                "default": true,
+                "invisible": true
+            },
+            "error_notify_mode": {
+                "description": "旧版：错误通知模式",
+                "type": "string",
+                "hint": "已被「缓存与限速 - 错误通知模式」取代，插件会自动迁移取值。",
+                "default": "通知",
+                "invisible": true
+            },
+            "bot_qq": {
+                "description": "旧版：机器人QQ号",
+                "type": "string",
+                "hint": "已被「群文件空间 - 机器人QQ号」取代，插件会自动迁移取值。",
+                "default": "",
+                "invisible": true
+            },
+            "space_check_enabled": {
+                "description": "旧版：发送前检查群文件空间",
+                "type": "bool",
+                "hint": "已被「群文件空间 - 发送前检查群文件空间」取代，插件会自动迁移取值。",
+                "default": true,
+                "invisible": true
+            },
+            "space_warn_remaining_gb": {
+                "description": "旧版：空间告警阈值",
+                "type": "float",
+                "hint": "已被「群文件空间 - 空间告警阈值」取代，插件会自动迁移取值。",
+                "default": 0.5,
+                "invisible": true
+            },
+            "group_file_quota_gb": {
+                "description": "旧版：群文件容量",
+                "type": "float",
+                "hint": "已被「群文件空间 - 群文件容量」取代，插件会自动迁移取值。",
+                "default": 10.0,
+                "invisible": true
+            },
+            "space_include_temp_files": {
+                "description": "旧版：空间统计计入临时文件",
+                "type": "bool",
+                "hint": "已被「群文件空间 - 空间统计计入临时文件」取代，插件会自动迁移取值。",
+                "default": false,
+                "invisible": true
+            },
+            "space_warn_notify": {
+                "description": "旧版：空间不足时群内提醒",
+                "type": "bool",
+                "hint": "已被「群文件空间 - 空间不足时群内提醒」取代，插件会自动迁移取值。",
+                "default": true,
+                "invisible": true
+            },
+            "auto_clean_enabled": {
+                "description": "旧版：自动清理群文件总开关",
+                "type": "bool",
+                "hint": "已被「群文件清理 - 自动清理群文件总开关」取代，插件会自动迁移取值。",
+                "default": false,
+                "invisible": true
+            },
+            "auto_clean_days": {
+                "description": "旧版：群文件保留天数",
+                "type": "int",
+                "hint": "已被「群文件清理 - 群文件保留天数」取代，插件会自动迁移取值（注意新版默认值为 30）。",
+                "default": 7,
+                "invisible": true
+            },
+            "auto_clean_on_send": {
+                "description": "旧版：清理时机-发送前",
+                "type": "bool",
+                "hint": "已被「群文件清理 - 清理时机：发送前」取代，插件会自动迁移取值。",
+                "default": true,
+                "invisible": true
+            },
+            "auto_clean_scheduled": {
+                "description": "旧版：清理时机-定时",
+                "type": "bool",
+                "hint": "已被「群文件清理 - 清理时机：插件加载后定时」取代，插件会自动迁移取值。",
+                "default": false,
+                "invisible": true
+            },
+            "auto_clean_interval_hours": {
+                "description": "旧版：定时清理间隔",
+                "type": "int",
+                "hint": "已被「群文件清理 - 定时清理间隔」取代，插件会自动迁移取值。",
+                "default": 24,
+                "invisible": true
+            },
+            "del_files_enabled": {
+                "description": "旧版：启用 /del-files",
+                "type": "bool",
+                "hint": "已被「群文件清理 - 启用 /del-files 指令」取代，插件会自动迁移取值。",
+                "default": true,
+                "invisible": true
+            },
+            "del_files_audience": {
+                "description": "旧版：/del-files 可用人群",
+                "type": "string",
+                "hint": "已被「群文件清理 - /del-files 可用人群」取代（旧版为单选，新版为多选），插件会自动迁移取值。",
+                "default": "群管理员",
+                "invisible": true
+            },
+            "jmspace_enabled": {
+                "description": "旧版：启用 /jmspace",
+                "type": "bool",
+                "hint": "已被「群文件空间 - 启用 /jmspace 指令」取代，插件会自动迁移取值。",
+                "default": true,
+                "invisible": true
             }
         }
     }

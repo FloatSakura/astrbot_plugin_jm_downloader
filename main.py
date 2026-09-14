@@ -12,6 +12,14 @@ from astrbot.api.message_components import Node, Nodes, Plain
 
 import shutil
 
+from .core.jm_group_files import (
+    clean_bot_files,
+    compute_used_space,
+    format_size,
+    format_space,
+    get_member_role,
+    get_onebot_client,
+)
 from .core.jm_handler import JmDownloadMixin, _rate_limiter
 from .core.jm_paths import get_jm_cache_path
 # endregion
@@ -32,14 +40,19 @@ _COMMAND_MODES: dict[str, str] = {
     "astrbot_plugin_jm_downloader",
     "FloatSakura",
     "禁漫天堂本子下载，.jm 指令自动下载并以压缩包/PDF发送",
-    "1.2.2",
+    "1.2.5",
 )
 class JmDownloader(JmDownloadMixin, Star):
     def __init__(self, context: Context, config: AstrBotConfig | dict | None = None):
         super().__init__(context)
         self.context = context
         self.config = config or context.get_config()
+        self._clean_task = None
+        # 先把旧版扁平配置迁移到分组配置，再读取（迁移失败也会走 _cfg 的旧键回退）
+        self._migrate_legacy_config()
         self._refresh_jm_config()
+        # 定时清理任务必须在事件循环内创建；构造阶段若无循环，则延后到首次指令
+        self.ensure_clean_task()
         logger.info("📖 JM下载插件已加载")
 
     # region 事件处理器
@@ -58,6 +71,8 @@ class JmDownloader(JmDownloadMixin, Star):
 
         # 白名单检查
         self._refresh_jm_config()
+        # 兜底：构造阶段未成功创建时，在此补建定时清理任务
+        self.ensure_clean_task()
         if self.jm_whitelist_enabled:
             gid = event.get_group_id()
             if gid and gid not in self.jm_whitelist_set:
@@ -179,6 +194,20 @@ class JmDownloader(JmDownloadMixin, Star):
         async for r in self._parse_and_execute(event, override_mode="jmall"):
             yield r
 
+    @filter.command("del-files")
+    async def on_del_files(self, event: AstrMessageEvent):
+        """/del-files — 清理本群中 Bot 上传的过期群文件"""
+        self.ensure_clean_task()
+        async for r in self._handle_del_files(event):
+            yield r
+
+    @filter.command("jmspace")
+    async def on_jmspace(self, event: AstrMessageEvent):
+        """/jmspace — 查看本群群文件空间使用情况"""
+        self.ensure_clean_task()
+        async for r in self._handle_jmspace(event):
+            yield r
+
     @filter.command("jmhelp")
     async def on_jm_help(self, event: AstrMessageEvent):
         """.jmhelp — 以合并转发形式显示插件使用帮助"""
@@ -257,6 +286,8 @@ class JmDownloader(JmDownloadMixin, Star):
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 "• /jmhelp — 显示本帮助\n"
                 "• /jm del-cache — 清空缓存\n"
+                "• /jmspace — 查看本群群文件空间\n"
+                "• /del-files — 清理 Bot 上传的过期群文件\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 "🐧 {}".format(
                     ("有需求请联系管理员：" + getattr(self, 'jm_admin_qq', '')) if getattr(self, 'jm_admin_qq', '') else "请联系本群管理员"
@@ -273,6 +304,146 @@ class JmDownloader(JmDownloadMixin, Star):
             )
 
         yield event.chain_result([nodes])
+
+    # endregion
+
+    # region 群文件管理指令
+    async def _require_group_file_ready(self, event: AstrMessageEvent):
+        """群文件管理指令的公共前置检查。
+
+        Returns:
+            (client, group_id, error_message) — 出错时 client/group_id 为 None
+        """
+        self._refresh_jm_config()
+
+        group_id = event.get_group_id()
+        if not group_id:
+            return None, None, "❗ 该指令仅支持在群聊中使用"
+
+        if not self.jm_group_file_ready:
+            return None, None, (
+                "⛔ 未配置「机器人QQ号」(bot_qq)，群文件管理功能已禁用\n"
+                "请在插件配置中填写 Bot 自身登录的 QQ 号后重试"
+            )
+
+        client = await get_onebot_client(event, self.context)
+        if client is None:
+            return None, None, "⛔ 无法获取 QQ 客户端，请稍后重试"
+
+        return client, group_id, ""
+
+    async def _check_del_files_permission(self, event, client, group_id):
+        """按 del_files_audience（可多选）判定 /del-files 权限。
+
+        勾选多项时满足任意一项即可。群角色通过协议端查询；
+        查询失败一律拒绝，不静默放行。
+        """
+        audience = set(self.jm_del_files_audience or [])
+        if not audience:
+            return False, "⛔ 未配置 /del-files 可用人群，指令已禁用"
+
+        sender_id = str(event.get_sender_id() or "").strip()
+        if not sender_id:
+            return False, "⛔ 无法识别你的账号，指令已拒绝"
+
+        # 「Bot管理员」不依赖群角色，先判定，避免多余的接口调用
+        if "Bot管理员" in audience:
+            admin_qq = str(self.jm_admin_qq or "").strip()
+            if admin_qq and sender_id == admin_qq:
+                return True, ""
+
+        if not (audience & {"群主", "群管理员", "群员"}):
+            return False, "⛔ 该指令仅限 Bot 管理员使用"
+
+        role = await get_member_role(client, group_id, sender_id)
+        if not role:
+            return False, "⛔ 无法确认你的群身份，指令已拒绝"
+
+        if role == "owner":
+            if audience & {"群主", "群管理员"}:
+                return True, ""
+        elif role == "admin":
+            if "群管理员" in audience:
+                return True, ""
+        elif "群员" in audience:
+            return True, ""
+
+        allowed_text = "、".join(self.jm_del_files_audience)
+        return False, f"⛔ 你不在该指令的允许人群内\n当前允许: {allowed_text}"
+
+    async def _handle_del_files(self, event: AstrMessageEvent):
+        """清理本群中 Bot 上传的过期群文件"""
+        self._refresh_jm_config()
+
+        if not self.jm_del_files_enabled:
+            yield event.plain_result("⛔ /del-files 指令已被管理员关闭")
+            return
+
+        client, group_id, error = await self._require_group_file_ready(event)
+        if error:
+            yield event.plain_result(error)
+            return
+
+        allowed, error = await self._check_del_files_permission(event, client, group_id)
+        if not allowed:
+            yield event.plain_result(error)
+            return
+
+        if self.jm_auto_clean_days <= 0:
+            yield event.plain_result(
+                "⛔ 当前群文件保留天数为 0（不删除）\n"
+                "请在插件配置中设置「群文件保留天数」后再试"
+            )
+            return
+
+        yield event.plain_result(
+            f"🧹 正在清理本群中 {self.jm_auto_clean_days} 天前 Bot 上传的文件，请稍候..."
+        )
+        deleted, failed, freed = await clean_bot_files(
+            client, group_id, self.jm_auto_clean_days, self.jm_bot_qq
+        )
+        yield event.plain_result(
+            f"🧹 群文件清理完成\n"
+            f"{'─' * 20}\n"
+            f"删除: {deleted} 个 | 失败: {failed} 个\n"
+            f"释放空间: {format_size(freed)}"
+        )
+
+    async def _handle_jmspace(self, event: AstrMessageEvent):
+        """查看本群群文件空间使用情况"""
+        self._refresh_jm_config()
+
+        if not self.jm_jmspace_enabled:
+            yield event.plain_result("⛔ /jmspace 指令已被管理员关闭")
+            return
+
+        client, group_id, error = await self._require_group_file_ready(event)
+        if error:
+            yield event.plain_result(error)
+            return
+
+        yield event.plain_result("📊 正在统计群文件空间，请稍候...")
+
+        # 协议端 used_space/total_space 为硬编码值，已用空间需自行按文件大小统计
+        stats = await compute_used_space(client, group_id)
+        if stats is None:
+            yield event.plain_result("❌ 获取群文件列表失败，无法统计空间")
+            return
+
+        yield event.plain_result(
+            format_space(
+                stats,
+                self.jm_group_file_quota_gb,
+                self.jm_space_include_temp_files,
+            )
+        )
+
+    # endregion
+
+    # region 生命周期
+    async def terminate(self):
+        """插件卸载/重载时停止后台定时清理任务"""
+        await self.stop_clean_task()
 
     # endregion
 
